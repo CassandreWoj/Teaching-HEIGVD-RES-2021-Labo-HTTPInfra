@@ -47,12 +47,12 @@ docker inspect <name> | grep -i ipaddr
 ```
 
 Affichage du site statique via le navigateur
-![Step1 - site statique](./images/step1.png)
+<img src="./images/step1.png" alt="Step1 - site statique" style="zoom:33%;" />
 
 
 ## Step 2 Serveur dynamique HTTP avec express.js
 
-Express.js est une infrastructure d'applications Web basées sur Node.js. 
+Express.js est une infrastructure d'applications Web basée sur Node.js. 
 Pour cette étape, nous créons un container Docker contenant une application dynamique, programmée avec Node.js, dont le rôle est de créer des adresses imaginaires en combinant des rues, des villes et des pays. Ces éléments ont été créé à l'aide du générateur Chancejs.
 
 /!\ Pour lancer le container, il faut impérativement se trouver dans le répertoire express-dynamique. 
@@ -85,7 +85,7 @@ docker inspect <name> | grep -i ipaddr
 Nous pouvons aussi passer par le terminal avec la commande : `curl --location --request GET [172.17.0.2:3000](http://172.17.0.2:3000)`
 
 Affichage du site statique via le navigateur
-![Step2 - site statique](./images/step2.png)
+<img src="./images/step2.png" alt="Step2 - site statique" style="zoom: 50%;" />
 
 ## Step 3 Reverse proxy avec apache (configuration statique)
 
@@ -144,7 +144,56 @@ Nous pourrons ensuite nous connecter sur l'adresse `http://172.17.0.1:8080` puis
 Le site statique se trouve à la racine, tandis que l'application se trouve sur le chemin `/api/addresses/`. Ces chemins ont été définis dans les configurations expliquées ci-dessus.
 
 Affichage du site statique via le navigateur (res.labo.ch:8080)
-![Step3 - site statique](./images/step3_1.png)
+<img src="./images/step3_1.png" alt="Step3 - site statique" style="zoom: 33%;" />
 
 Affichage du site statique via le navigateur (res.labo.ch:8080/api/addresses/)
-![Step3 - site statique](./images/step3_2.png)
+<img src="./images/step3_2.png" alt="Step3 - site statique" style="zoom:50%;" />
+
+
+
+## Step 4 AJAX requests with JQuery
+> Tous les containers doivent être tué avant les manipulations suivantes exemple : `docker kill apache_static && docker rm apache_static`
+
+Pour cette étape, nous avons créé un script js `address.js` reprenant celui de l'étape 2 et l'intégrant à notre site web statique. 
+
+Nous avons commencé par modifier les Dockerfile précédemment créés pour qu'ils installent `vim` dès le lancement des containers. Nous avons reconstruit les images et run les trois containers. 
+Le script js créé permet d'intégrer une adresse aléatoire dans notre site (la première du `json`), à la rubrique "Adresse".
+
+```js
+$(function(){
+    console.log("lOADING ADDRESSES");
+
+    function loadAddresses(){
+        $.getJSON("/api/addresses/", function(addresses){
+            console.log(addresses);
+            var message = "No address";
+            if(addresses.length > 3){
+                message = addresses[0].street + ', ' + addresses[0].city + '<br>' + addresses[0].country;
+            }
+            $(".address").html(message);
+        });
+
+    };
+    loadAddresses();
+    setInterval(loadAddresses, 2000);
+});
+```
+
+Une fois le script créé directement dans le terminal du container, nous avons testé le bon fonctionnement en ajoutant une balise `script` dans le code html du site statique pour indiquer l'emplacement du script.
+Nous avons également ajouté un nom à la classe html contenant la rubrique de l'adresse afin de pouvoir la référencer dans le script.
+```html
+<h4 class="address">Dream Road, 14, DreamLand</h4>
+...
+<!-- Script load address -->
+<script src="assets/js/address.js"></script>
+```
+
+Dès lors que nous avons constaté que tout fonctionnait correctement, nous avons modifié les fichiers en local (index.html et address.js), puis nous les récupérons en faisant le `build` pour créer le container.
+
+Nous avons vérifié que le tout fonctionnait toujours en arrêtant le container, en le supprimant, puis en relançant un `build` et un `run`.
+
+La démonstration ne fonctionnerait pas sans le reverse proxy, car le site web est sur un serveur apache dans un container et le script js est situé dans un autre container. 
+Le reverse proxy va envoyer les requêtes vers le bon serveur : celui contenant le script. Sans le reverse proxy, on ne pourrait pas atteindre le script.
+
+## Step 5 Dynamic reverse proxy configuration
+
