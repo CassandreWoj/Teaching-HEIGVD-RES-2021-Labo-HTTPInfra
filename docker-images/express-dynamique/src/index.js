@@ -18,7 +18,6 @@ function generateAddresses(){
 		max: 15
 	});
 
-	console.log(noAd);
 	var addr = [];
 	for(var i = 0; i < noAd; ++i){
 		var street = chance.address();

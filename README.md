@@ -240,7 +240,7 @@ Ainsi, nous pouvons donner les adresses de containers contenant les applications
 docker run -p 8080:80 -e STATIC_APP=172.17.0.5:80 -e DYNAMIC_APP=172.17.0.4:3000 res/apache_rp
 ```
 
-## Bonus Load balancing: multiple server nodes
+## Bonus: Load balancing: multiple server nodes
 
 1. Modification du Dockerfile du reverse proxy pour ajouter : `RUN a2enmod proxy proxy_http lbmethod_byrequests proxy_balancer`
 2. Modification du config-template.php pour ajouter les balises `Proxy Balancer`.
@@ -303,3 +303,32 @@ TODO VERIFICATION
 Afin de vérifier le bon fonctionnement de notre load balancing, nous avons créé une autre image de res/apache_php avec le code source du site modifié. Comme on peut le constater dans les images ci-dessous, lorsqu'on est sur le "serveur 2" (container basé sur la seconde image) la valeur "Serveur static 2" est affichée. Sinon on aura la valeur "Serveur static 1".
 ![Server static 2](images/step6-1.png)
 ![Server static 1](images/step6-2.png)
+
+
+## Bonus: Load balancing: round-robin vs sticky sessions
+
+1. Ajouter `headers` a `a2enmod` dans le Dockerfile
+2. Ajouter `ProxySet stickysession=ROUTEID` dans la balise `<Proxy balancer...> `
+3. Ajouter le Cookie-Header : 
+   `Header add Set-Cookie "ROUTEID=.%{BALANCER_WORKER_ROUTE}e; path=/" env=BALANCER_ROUTE_CHANGED`
+   
+4. Redémarrer le load balancer
+
+Vérification -> recharger plusieurs fois la page et vérifier qu'on reste bien sur le même serveur
+             -> utiliser deux navigateurs différents pour se connecter sur le load balancer et constater que chacun est sur un serveur différent
+
+## Bonus: Dynamic cluster management
+
+Nous avons ajouté les lignes suivantes dans notre fichier config-template.php.
+```php
+<Location "/balancer-manager">
+        SetHandler balancer-manager
+    </Location>
+
+    ProxyPass '/balancer-manager' !
+```
+
+On peut dès maintenant accéder au `Load Balancer Manager` via l'URL `res.labo.ch:8080/balancer-manager` :
+![](images/step8-1.png)
+![](images/step8-2.png)
+
