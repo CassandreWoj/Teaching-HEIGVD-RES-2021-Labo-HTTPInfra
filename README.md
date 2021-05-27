@@ -240,3 +240,66 @@ Ainsi, nous pouvons donner les adresses de containers contenant les applications
 docker run -p 8080:80 -e STATIC_APP=172.17.0.5:80 -e DYNAMIC_APP=172.17.0.4:3000 res/apache_rp
 ```
 
+## Bonus Load balancing: multiple server nodes
+
+1. Modification du Dockerfile du reverse proxy pour ajouter : `RUN a2enmod proxy proxy_http lbmethod_byrequests proxy_balancer`
+2. Modification du config-template.php pour ajouter les balises `Proxy Balancer`.
+3. Lancement de plusieurs containers (pour tester : 2x avec le site web (statique) et 2x avec l'application (dynamique))
+    -> `docker inspect <nom du container>`
+    -> récupération des adresses IP
+    -> commande `docker run` avec les 4 adresses IP observées précédemment passées comme variables d'environnement avec -e.
+   
+```php
+<?php
+$ip_static1 = getenv('STATIC_APP1');
+$ip_static2 = getenv('STATIC_APP2');
+$ip_dynamic1 = getenv('DYNAMIC_APP1');
+$ip_dynamic2 = getenv('DYNAMIC_APP2');
+?>
+
+<VirtualHost *:80>
+	ServerName res.labo.ch
+
+    <Proxy balancer://dynamic-app>
+        BalancerMember 'http://<?php echo "$ip_dynamic1"?>'
+        BalancerMember 'http://<?php echo "$ip_dynamic2"?>'
+    </Proxy>
+
+    <Proxy balancer://static-app>
+        BalancerMember 'http://<?php echo "$ip_static1"?>'
+        BalancerMember 'http://<?php echo "$ip_static2"?>'
+    </Proxy>
+
+    ProxyPass '/api/addresses/' 'balancer://dynamic-app/'
+    ProxyPassReverse '/api/addresses/' 'balancer://dynamic-app/'
+
+	ProxyPass '/' 'balancer://static-app/'
+	ProxyPassReverse '/' 'balancer://static-app/'
+
+</VirtualHost>
+```
+
+
+```shell
+docker build -t res/apache_php serveur_statique/
+docker build -t res/apache_php2 serveur_statique2/
+docker build -t res/express_labo express_dynamique/
+
+docker run -d res/apache_php
+docker run -d res/apache_php2
+docker run -d res/express_labo
+
+docker ps
+docker inspect <nom des containers> | grep -i ipa
+
+docker run -p 8080:80 -e STATIC_APP1=172.17.0.2:80 -e STATIC_APP2=172.17.0.3:80 -e DYNAMIC_APP1=172.17.0.4:3000 -e DYNAMIC_APP2=172.17.0.5:3000 res/apache_rp
+
+```
+
+TODO VERIFICATION
+> docker run -p 8080:80 -e STATIC_APP1=172.17.0.2:80 -e STATIC_APP2=172.17.0.3:80 -e DYNAMIC_APP1=172.17.0.4:3000 -e DYNAMIC_APP2=172.17.0.5:3000 res/apache_rp
+
+
+Afin de vérifier le bon fonctionnement de notre load balancing, nous avons créé une autre image de res/apache_php avec le code source du site modifié. Comme on peut le constater dans les images ci-dessous, lorsqu'on est sur le "serveur 2" (container basé sur la seconde image) la valeur "Serveur static 2" est affichée. Sinon on aura la valeur "Serveur static 1".
+![Server static 2](images/step6-1.png)
+![Server static 1](images/step6-2.png)
