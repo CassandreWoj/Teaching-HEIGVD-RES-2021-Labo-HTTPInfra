@@ -11,7 +11,7 @@ Notre template HTML utilise le framework CSS Bootstrap que nous avons personnali
 
 Dans le Dockerfile, nous avons utilisé la commande `COPY` pour copier les fichiers constituant le site statique dans `/var/www/html/` du container. Cet emplacement est la racine du serveur Web d'Apache dans le container. 
 [Lien vers le Dockerfile](https://github.com/CassandreWoj/Teaching-HEIGVD-RES-2021-Labo-HTTPInfra/blob/master/docker-images/serveur-statique/Dockerfile)
-```shell
+```dockerfile
 #Contenu du Dockerfile
 FROM php:7.2-apache
 LABEL authors="Gwendoline Dossegger <gwendoline.dossegger@heig-vd.ch>, Cassandre Wojciechowski <cassandre.wojciechowski@heig-vd.ch>"
@@ -120,7 +120,7 @@ Ce fichier de configuration se trouve dans `conf/sites-available`.
 ```
 
 Le Dockerfile associé est le suivant : 
-```shell
+```dockerfile
 FROM php:7.2-apache
 LABEL authors="Gwendoline Dossegger <gwendoline.dossegger@heig-vd.ch>, Cassandre Wojciechowski <cassandre.wojciechowski@heig-vd.ch>"
 COPY conf/ /etc/apache2
@@ -196,4 +196,47 @@ La démonstration ne fonctionnerait pas sans le reverse proxy, car le site web e
 Le reverse proxy va envoyer les requêtes vers le bon serveur : celui contenant le script. Sans le reverse proxy, on ne pourrait pas atteindre le script.
 
 ## Step 5 Dynamic reverse proxy configuration
+Pour cette étape, nous avons récupéré le fichier `apache2-foreground` depuis l'image Apache 7.2. Nous avons ajouté l'affichage des variables `STATIC_APP` et `DYNAMIC_APP` en plus. 
+Nous avons également ajouté la ligne suivante : 
+```shell
+php /var/apache2/templates/config-template.php > /etc/apache2/sites-available/001-reverse-proxy.conf
+```
+
+Celle-ci va exécuter le script php (ci-dessous) pour récupérer les variables d'environnement passées au lancement du container (avec -e), construire le `VirtualHost` à partir des adresses IP obtenues
+et copier le résultat du script dans le fichier `001-reverse-proxy.conf`.
+```php
+<?php
+$ip_static = getenv('STATIC_APP');
+$ip_dynamic = getenv('DYNAMIC_APP');
+?>
+
+<VirtualHost *:80>
+	ServerName res.labo.ch
+	ProxyPass '/api/addresses/' 'http://<?php echo "$ip_dynamic"?>/'
+	ProxyPassReverse '/api/addresses/' 'http://<?php echo "$ip_dynamic"?>/'
+
+	ProxyPass '/' 'http://<?php echo "$ip_static"?>/'
+	ProxyPassReverse '/' 'http://<?php echo "$ip_static"?>'
+</VirtualHost>
+```
+
+Dans le Dockerfile, nous copions les configurations et le script php dans l'image :
+```dockerfile
+FROM php:7.2-apache
+
+LABEL authors="Gwendoline Dossegger <gwendoline.dossegger@heig-vd.ch>, Cassandre Wojciechowski <cassandre.wojciechowski@heig-vd.ch>"
+RUN apt-get update && apt-get install -y vim
+
+COPY apache2-foreground /usr/local/bin/
+COPY templates /var/apache2/templates
+COPY conf/ /etc/apache2
+
+RUN a2enmod proxy proxy_http
+RUN a2ensite 000-* 001-*
+```
+
+Ainsi, nous pouvons donner les adresses de containers contenant les applications statique (site web) et dynamique (JSON avec les adresses aléatoires).
+```shell
+docker run -p 8080:80 -e STATIC_APP=172.17.0.5:80 -e DYNAMIC_APP=172.17.0.4:3000 res/apache_rp
+```
 
